@@ -1,5 +1,122 @@
 <html>
+    <head>
+        <script type="text/javascript" src="pako.js"></script>
+        <script>
+            var state = "uninitialized"
+
+            document.addEventListener("DOMContentLoaded", function () {
+                bindEvents();
+            });
+            function bindEvents () {
+                var loadFileButton = document.querySelector("input[id='loadFileButton']");
+                var saveFileTextArea = document.querySelector("textarea[id='saveFileTextArea']");
+                var saveFileButton = document.querySelector("input[id='saveFileButton']");
+                var saveFileValues = document.querySelectorAll(".saveFileValue");
+
+                loadFileButton.onchange = async function (event) {
+                    state = "decoding"
+                    var text = await event.target.files[0].text();
+                    saveFileTextArea.value = text;
+                    saveFileTextArea.dispatchEvent(new Event("input"));
+                };
+                saveFileTextArea.oninput = function (event) {
+                    if ( state == "decoding" ) {
+                        var text = event.target.value;
+
+                        // remove AntimatterDimensionsSavefileFormatAAB and EndOfSavefile
+                        text = text.slice(37, -13);
+                        // fix special characters
+                        text = text.replace(/0c/g, "/").replace(/0b/g, "+").replace(/0a/g, "0");
+                        // base64 decode
+                        text = atob(text);
+                        // zlib inflate
+                        text = Uint8Array.from(Array.from(text).map(i => i.charCodeAt(0)));
+                        text = pako.inflate(text)
+                        text = new TextDecoder().decode(text);
+                        saveFileDecodedTextArea.value = text
+
+                        saveFileDecodedTextArea.dispatchEvent(new Event("input"));
+                    }
+                };
+                saveFileDecodedTextArea.oninput = function (event) {
+                    if ( state == "decoding" ) {
+                        var text = event.target.value;
+                        // json parse
+                        text = JSON.parse(text);
+                        console.log(text);
+                        // update values
+                        for ( var i = 0; i < saveFileValues.length; i++ ) {
+                            console.log(saveFileValues[i]);
+                            var saveFileValue = saveFileValues[i];
+                            var path = saveFileValue.id;
+                            var value = text;
+                            var pathParts = path.split("/");
+                            for ( var j = 0; j < pathParts.length; j++ ) {
+                                value = value[pathParts[j]];
+                            }
+                            saveFileValue.value = value;
+                        }
+                        state = "passive"
+                    }
+                    if ( state == "encoding" ) {
+                        var text = event.target.value;
+                        // zlib deflate
+                        text = new TextEncoder().encode(text);
+                        text = pako.deflate(text);
+                        text = Array.from(text).map(i => String.fromCharCode(i)).join("");
+                        // base64 encode
+                        text = btoa(text);
+                        // fix special characters
+                        text = text.replace(/0/g, "0a").replace(/\+/g, "0b").replace(/\//g, "0c");
+                        // add AntimatterDimensionsSavefileFormatAAB and EndOfSavefile
+                        text = "AntimatterDimensionsSavefileFormatAAB" + text + "EndOfSavefile";
+
+                        saveFileTextArea.value = text;
+                        state = "passive"
+                    }
+                };
+                for ( var i = 0; i < saveFileValues.length; i++ ) {
+                    var saveFileValue = saveFileValues[i];
+                    saveFileValue.oninput = function (event) {
+                        if ( state == "passive" ) {
+                            state = "encoding"
+                            var path = event.target.id;
+                            var value = event.target.value;
+                            var pathParts = path.split("/");
+                            var text = JSON.parse(saveFileDecodedTextArea.value);
+                            var value = text;
+                            for ( var j = 0; j < pathParts.length - 1; j++ ) {
+                                value = value[pathParts[j]];
+                            }
+                            value[pathParts[pathParts.length - 1]] = event.target.value;
+                            saveFileDecodedTextArea.value = JSON.stringify(text);
+                            saveFileDecodedTextArea.dispatchEvent(new Event("input"));
+                        }
+                    };
+                }
+                saveFileButton.onclick = function (event) {
+                    var blob = new Blob([saveFileTextArea.value], {type: "text/plain;charset=utf-8"});
+                    var a = document.createElement("a");
+                    a.href = URL.createObjectURL(blob);
+                    a.download = "AntimatterDimensionsSaveEdited.txt";
+                    a.click();
+                };
+            }
+        </script>
+    </head>
     <body>
         Hello Again~
+        <br />
+        <input type="file" id="loadFileButton" style="display: none;" />
+        <input type="button" value="Load" onclick="document.getElementById('loadFileButton').click();" />
+        <input type="button" id="saveFileButton" value="Save" />
+        <br />
+        <textarea id="saveFileTextArea"></textarea>
+        <br />
+        <textarea id="saveFileDecodedTextArea" disabled="disabled"></textarea>
+        <br />
+        Antimatter: <input type="text" id="antimatter" class="saveFileValue"></input>
+
+
     </body>
 </html>
